@@ -18,6 +18,7 @@ use std::sync::Arc;
 use crate::models::Settings;
 use crate::services::file_service::FileService;
 use super::xml_extractor::XmlOfficeExtractor;
+use super::llm::LlmOcrClient;
 
 /// Callback for reporting OCR progress (current_page, total_pages).
 /// Called synchronously; implementations should use tokio::spawn for async work.
@@ -68,13 +69,21 @@ pub fn ocrmypdf_ocr_command_args(
     args
 }
 
+/// Path of the PNG `pdftoppm -png <pdf> <prefix>` writes for `page_num`.
+/// pdftoppm zero-pads page numbers to the width of the page count, so a
+/// 12-page PDF produces `<prefix>-01.png` through `<prefix>-12.png`.
+pub fn pdftoppm_page_path(prefix: &str, page_num: usize, page_count: usize) -> String {
+    let width = page_count.to_string().len();
+    format!("{}-{:0width$}.png", prefix, page_num, width = width)
+}
+
 /// RAII guard for automatic cleanup of temporary files
-struct FileCleanupGuard {
+pub(super) struct FileCleanupGuard {
     file_path: String,
 }
 
 impl FileCleanupGuard {
-    fn new(file_path: &str) -> Self {
+    pub(super) fn new(file_path: &str) -> Self {
         Self {
             file_path: file_path.to_string(),
         }
@@ -117,6 +126,10 @@ pub struct EnhancedOcrService {
     pub max_pdf_size: u64,
     pub max_office_document_size: u64,
     pub ocr_timeout_seconds: u64,
+    /// When set, PDFs and images are OCR'd by this LLM first and the
+    /// Tesseract/ocrmypdf pipeline only runs if the LLM fails or times out.
+    /// See `super::llm_extraction`.
+    pub llm_ocr: Option<LlmOcrClient>,
 }
 
 impl EnhancedOcrService {
@@ -125,7 +138,7 @@ impl EnhancedOcrService {
 
     /// Remove null bytes from text to prevent PostgreSQL errors
     /// This is the ONLY sanitization we do - preserving all other original content
-    fn remove_null_bytes(text: &str) -> String {
+    pub(super) fn remove_null_bytes(text: &str) -> String {
         let original_len = text.len();
         let cleaned: String = text.chars().filter(|&c| c != '\0').collect();
         
@@ -151,6 +164,7 @@ impl EnhancedOcrService {
             max_pdf_size: max_pdf_size_mb * 1024 * 1024,
             max_office_document_size: max_office_document_size_mb * 1024 * 1024,
             ocr_timeout_seconds,
+            llm_ocr: None,
         }
     }
     
@@ -311,10 +325,7 @@ impl EnhancedOcrService {
         }
         
         // Save processed image to temporary file
-        let temp_filename = format!("processed_{}_{}.png", 
-            std::process::id(), 
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis()
-        );
+        let temp_filename = format!("processed_{}.png", uuid::Uuid::new_v4());
         let temp_path = format!("{}/{}", self.temp_dir, temp_filename);
         
         let dynamic_processed = DynamicImage::ImageLuma8(processed_gray);
@@ -1119,10 +1130,7 @@ impl EnhancedOcrService {
         }
         
         // Generate temporary file path for OCR'd PDF
-        let temp_ocr_filename = format!("ocr_{}_{}.pdf", 
-            std::process::id(), 
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis()
-        );
+        let temp_ocr_filename = format!("ocr_{}.pdf", uuid::Uuid::new_v4());
         let temp_ocr_path = format!("{}/{}", self.temp_dir, temp_ocr_filename);
         let temp_text_path = format!("{}.txt", temp_ocr_path);
 
@@ -1222,11 +1230,10 @@ impl EnhancedOcrService {
     async fn extract_pdf_text_quick(&self, file_path: &str) -> Result<(String, u64)> {
         let start_time = std::time::Instant::now();
 
-        // Generate temporary file path for text extraction
-        let temp_text_filename = format!("quick_text_{}_{}.txt",
-            std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis()
-        );
+        // Generate temporary file path for text extraction. The name must be
+        // unique per call: the worker extracts several PDFs at once, and a
+        // shared file hands one document another's text.
+        let temp_text_filename = format!("quick_text_{}.txt", uuid::Uuid::new_v4());
         let temp_text_path = format!("{}/{}", self.temp_dir, temp_text_filename);
 
         // Strategy 1: Fast text extraction using pdftotext (for existing text)
@@ -1389,18 +1396,15 @@ impl EnhancedOcrService {
 
     /// Convert PDF pages to PNG images using pdftoppm
     #[cfg(feature = "ocr")]
-    async fn extract_pdf_pages_as_images(&self, file_path: &str, page_count: usize) -> Result<Vec<String>> {
-        let temp_prefix = format!("{}/pdf_page_{}_{}",
-            self.temp_dir,
-            std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis()
-        );
+    pub(super) async fn extract_pdf_pages_as_images(&self, file_path: &str, page_count: usize, dpi: u32) -> Result<Vec<String>> {
+        // Unique per call: the worker renders several PDFs at once, and a
+        // shared prefix lets them overwrite and delete each other's pages.
+        let temp_prefix = format!("{}/pdf_page_{}", self.temp_dir, uuid::Uuid::new_v4());
 
-        // Convert all pages to PNG at 300 DPI for good OCR quality
         let output = tokio::process::Command::new("pdftoppm")
             .arg("-png")
             .arg("-r")
-            .arg("300")
+            .arg(dpi.to_string())
             .arg(file_path)
             .arg(&temp_prefix)
             .output()
@@ -1413,7 +1417,7 @@ impl EnhancedOcrService {
         // Collect generated image paths
         let mut image_paths = Vec::new();
         for page_num in 1..=page_count {
-            let image_path = format!("{}-{}.png", temp_prefix, page_num);
+            let image_path = pdftoppm_page_path(&temp_prefix, page_num, page_count);
             if tokio::fs::metadata(&image_path).await.is_ok() {
                 image_paths.push(image_path);
             }
@@ -1441,7 +1445,8 @@ impl EnhancedOcrService {
         }
 
         // Convert pages to images
-        let image_paths = self.extract_pdf_pages_as_images(file_path, page_count).await?;
+        // 300 DPI for good Tesseract quality
+        let image_paths = self.extract_pdf_pages_as_images(file_path, page_count, 300).await?;
 
         // OCR each page
         let mut all_text = String::new();
@@ -1606,6 +1611,9 @@ impl EnhancedOcrService {
             "application/pdf" => {
                 #[cfg(feature = "ocr")]
                 {
+                    if let Some(result) = self.try_llm_ocr(resolved_path, mime_type, progress_callback.clone()).await {
+                        return Ok(result);
+                    }
                     self.extract_text_from_pdf(&resolved_path, settings, progress_callback).await
                 }
                 #[cfg(not(feature = "ocr"))]
@@ -1616,6 +1624,9 @@ impl EnhancedOcrService {
             mime if mime.starts_with("image/") => {
                 #[cfg(feature = "ocr")]
                 {
+                    if let Some(result) = self.try_llm_ocr(resolved_path, mime, progress_callback.clone()).await {
+                        return Ok(result);
+                    }
                     self.extract_text_from_image(&resolved_path, settings).await
                 }
                 #[cfg(not(feature = "ocr"))]

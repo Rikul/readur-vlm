@@ -143,6 +143,7 @@ async fn test_docx_text_extraction() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -179,6 +180,7 @@ async fn test_xlsx_text_extraction() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -214,6 +216,7 @@ async fn test_null_byte_removal() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -251,6 +254,7 @@ async fn test_preserve_formatting() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -289,6 +293,7 @@ async fn test_empty_docx() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -321,6 +326,7 @@ async fn test_corrupted_docx() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -361,6 +367,7 @@ async fn test_legacy_doc_extraction() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -412,6 +419,7 @@ async fn test_legacy_doc_error_when_tools_unavailable() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -462,6 +470,7 @@ async fn test_file_size_limit() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -510,6 +519,7 @@ async fn test_legacy_doc_enhanced_error_message() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -552,6 +562,7 @@ async fn test_doc_extraction_multiple_strategies() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();
@@ -589,6 +600,7 @@ async fn test_doc_error_message_includes_processing_time() {
         max_pdf_size: 100 * 1024 * 1024,
         max_office_document_size: 100 * 1024 * 1024,
         ocr_timeout_seconds: 300,
+        llm_ocr: None,
     };
     
     let settings = Settings::default();

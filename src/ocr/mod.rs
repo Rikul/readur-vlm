@@ -2,6 +2,7 @@ pub mod api;
 pub mod enhanced;
 pub mod image_ocr;
 pub mod llm;
+mod llm_extraction;
 pub mod error;
 pub mod health;
 pub mod queue;

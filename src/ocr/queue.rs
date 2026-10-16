@@ -51,6 +51,7 @@ pub struct OcrQueueService {
     max_pdf_size_mb: u64,
     max_office_document_size_mb: u64,
     ocr_timeout_seconds: u64,
+    llm_ocr: Option<crate::ocr::llm::LlmOcrConfig>,
 }
 
 impl OcrQueueService {
@@ -86,7 +87,14 @@ impl OcrQueueService {
             max_pdf_size_mb,
             max_office_document_size_mb,
             ocr_timeout_seconds,
+            llm_ocr: None,
         }
+    }
+
+    /// OCR documents with a vision LLM first, falling back to Tesseract.
+    pub fn with_llm_ocr(mut self, llm_ocr: Option<crate::ocr::llm::LlmOcrConfig>) -> Self {
+        self.llm_ocr = llm_ocr;
+        self
     }
     
 
@@ -692,13 +700,23 @@ impl OcrQueueService {
     /// Start the worker loop
     pub async fn start_worker(self: Arc<Self>) -> Result<()> {
         let semaphore = Arc::new(Semaphore::new(self.max_concurrent_jobs));
-        let ocr_service = Arc::new(EnhancedOcrService::new(
+        let mut ocr_service = EnhancedOcrService::new(
             "/tmp".to_string(),
             (*self.file_service).clone(),
             self.max_pdf_size_mb,
             self.max_office_document_size_mb,
             self.ocr_timeout_seconds,
-        ));
+        );
+        if let Some(llm_config) = &self.llm_ocr {
+            match crate::ocr::llm::LlmOcrClient::new(llm_config.clone()) {
+                Ok(client) => {
+                    info!("LLM OCR enabled for worker {} (model '{}')", self.worker_id, client.model());
+                    ocr_service = ocr_service.with_llm_ocr(client);
+                }
+                Err(e) => error!("LLM OCR disabled, using Tesseract only: {}", e),
+            }
+        }
+        let ocr_service = Arc::new(ocr_service);
         
         info!(
             "Starting OCR worker {} with {} concurrent jobs",
