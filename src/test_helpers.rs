@@ -201,6 +201,7 @@ pub fn create_test_config_with_db(database_url: &str) -> Config {
         max_file_size_mb: 50,
         max_pdf_size_mb: 100,
         max_office_document_size_mb: 100,
+        llm_ocr: None,
 
         // Performance
         memory_limit_mb: 256,

@@ -828,6 +828,7 @@ impl TestConfigBuilder {
             max_file_size_mb: self.max_file_size_mb,
             max_pdf_size_mb: 100,
             max_office_document_size_mb: 100,
+            llm_ocr: None,
 
             // Performance
             memory_limit_mb: self.memory_limit_mb as usize,

@@ -390,7 +390,7 @@ async fn main() -> anyhow::Result<()> {
         config.max_pdf_size_mb,
         config.max_office_document_size_mb,
         config.ocr_timeout_seconds,
-    ));
+    ).with_llm_ocr(config.llm_ocr.clone()));
     
     // Initialize OIDC client if enabled
     let oidc_client = if config.oidc_enabled {

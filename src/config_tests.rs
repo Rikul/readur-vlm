@@ -32,6 +32,68 @@ mod s3_env_tests {
     }
 }
 
+mod llm_ocr_env_tests {
+    use crate::config::*;
+    use std::collections::HashMap;
+
+    fn parse(vars: &[(&str, &str)]) -> Result<Option<crate::ocr::llm::LlmOcrConfig>> {
+        let vars: HashMap<String, String> = vars.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        parse_llm_ocr_config(|name| vars.get(name).cloned())
+    }
+
+    #[test]
+    fn disabled_unless_llm_ocr_is_true() {
+        assert!(parse(&[]).unwrap().is_none());
+        assert!(parse(&[("LLM_OCR", "false"), ("LLM_OCR_API_URL", "http://h/v1")]).unwrap().is_none());
+        assert!(parse(&[("LLM_OCR", "maybe")]).is_err());
+    }
+
+    #[test]
+    fn enabled_requires_url_and_model() {
+        assert!(parse(&[("LLM_OCR", "true")]).is_err());
+        assert!(parse(&[("LLM_OCR", "true"), ("LLM_OCR_API_URL", "http://h/v1")]).is_err());
+        assert!(parse(&[("LLM_OCR", "true"), ("LLM_OCR_MODEL", "m")]).is_err());
+        assert!(parse(&[("LLM_OCR", "true"), ("LLM_OCR_API_URL", "ftp://h"), ("LLM_OCR_MODEL", "m")]).is_err());
+    }
+
+    #[test]
+    fn enabled_with_defaults_and_overrides() {
+        let c = parse(&[("LLM_OCR", "true"), ("LLM_OCR_API_URL", "http://ollama:11434/v1"), ("LLM_OCR_MODEL", "qwen2.5vl")])
+            .unwrap()
+            .unwrap();
+        assert_eq!(c.chat_completions_url(), "http://ollama:11434/v1/chat/completions");
+        assert_eq!(c.timeout_seconds, crate::ocr::llm::DEFAULT_LLM_OCR_TIMEOUT_SECONDS);
+        assert_eq!(c.max_concurrent_requests, crate::ocr::llm::DEFAULT_LLM_OCR_MAX_CONCURRENT_REQUESTS);
+        assert_eq!(c.file_types, crate::ocr::llm::LlmOcrFileTypes::All);
+        assert!(c.api_key.is_none());
+
+        let c = parse(&[
+            ("LLM_OCR", "1"),
+            ("LLM_OCR_API_URL", "https://api.example.com/v1"),
+            ("LLM_OCR_MODEL", "m"),
+            ("LLM_OCR_API_KEY", "k"),
+            ("LLM_OCR_TIMEOUT_SECONDS", "45"),
+            ("LLM_OCR_MAX_CONCURRENT_REQUESTS", "6"),
+            ("LLM_OCR_FILE_TYPES", "images"),
+            ("LLM_OCR_PROMPT", "custom"),
+        ])
+        .unwrap()
+        .unwrap();
+        assert_eq!(c.api_key.as_deref(), Some("k"));
+        assert_eq!(c.timeout_seconds, 45);
+        assert_eq!(c.max_concurrent_requests, 6);
+        assert_eq!(c.file_types, crate::ocr::llm::LlmOcrFileTypes::Images);
+        assert_eq!(c.prompt, "custom");
+
+        let bad_timeout = [("LLM_OCR", "true"), ("LLM_OCR_API_URL", "http://h"), ("LLM_OCR_MODEL", "m"), ("LLM_OCR_TIMEOUT_SECONDS", "0")];
+        assert!(parse(&bad_timeout).is_err());
+        let bad_concurrency = [("LLM_OCR", "true"), ("LLM_OCR_API_URL", "http://h"), ("LLM_OCR_MODEL", "m"), ("LLM_OCR_MAX_CONCURRENT_REQUESTS", "0")];
+        assert!(parse(&bad_concurrency).is_err());
+        let bad_file_types = [("LLM_OCR", "true"), ("LLM_OCR_API_URL", "http://h"), ("LLM_OCR_MODEL", "m"), ("LLM_OCR_FILE_TYPES", "pdfs")];
+        assert!(parse(&bad_file_types).is_err());
+    }
+}
+
 mod jwt_secret_tests {
     use crate::config::parsing::*;
     use std::path::{Path, PathBuf};
