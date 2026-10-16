@@ -82,6 +82,14 @@ See the [Configuration Reference](configuration-reference.md#security-and-access
 | `MAX_OFFICE_DOCUMENT_SIZE_MB` | `100` | Maximum Office document size for text extraction |
 | `AUTO_ROTATE_IMAGES` | `true` | Automatically rotate images for better OCR |
 | `ENABLE_IMAGE_PREPROCESSING` | `true` | Apply image enhancement before OCR |
+| `LLM_OCR` | `false` | OCR PDFs and images with a vision LLM instead of Tesseract (falls back to Tesseract on error or timeout) |
+| `LLM_OCR_API_URL` | - | OpenAI-compatible API base URL, e.g. `http://ollama:11434/v1` (required when `LLM_OCR=true`) |
+| `LLM_OCR_MODEL` | - | Vision model name, e.g. `qwen2.5vl:7b` (required when `LLM_OCR=true`) |
+| `LLM_OCR_API_KEY` | - | Bearer token for the LLM endpoint, if it needs one |
+| `LLM_OCR_TIMEOUT_SECONDS` | `120` | Per-page/per-image request timeout before falling back to Tesseract; starts once the request is sent, not while it waits for a slot |
+| `LLM_OCR_FILE_TYPES` | `all` | Which uploads use the LLM: `all` (images and PDFs) or `images` (PDFs keep using pdftotext/Tesseract/ocrmypdf) |
+| `LLM_OCR_MAX_CONCURRENT_REQUESTS` | `2` | LLM requests in flight at once across all OCR jobs; match it to what the server can run in parallel (e.g. `OLLAMA_NUM_PARALLEL`) |
+| `LLM_OCR_PROMPT` | built-in | Override the transcription prompt sent with each page |
 
 ### Search & Performance
 

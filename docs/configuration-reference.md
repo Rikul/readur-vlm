@@ -148,6 +148,14 @@ Related API behavior:
 | `OCR_PSM` | Integer | `3` | Tesseract page segmentation mode | No |
 | `OCR_OEM` | Integer | `1` | Tesseract OCR engine mode | No |
 | `TESSERACT_DATA_PATH` | String | `/usr/share/tesseract-ocr/4.00/tessdata` | Tesseract data directory | No |
+| `LLM_OCR` | Boolean | `false` | OCR PDFs and images with a vision LLM; Tesseract is the fallback on error or timeout | No |
+| `LLM_OCR_API_URL` | String | - | OpenAI-compatible API base URL (e.g. `http://ollama:11434/v1`) | When `LLM_OCR=true` |
+| `LLM_OCR_MODEL` | String | - | Vision model name (e.g. `qwen2.5vl:7b`) | When `LLM_OCR=true` |
+| `LLM_OCR_API_KEY` | String | - | Bearer token for the LLM endpoint | No |
+| `LLM_OCR_TIMEOUT_SECONDS` | Integer | `120` | Per-page/per-image LLM request timeout before falling back to Tesseract | No |
+| `LLM_OCR_FILE_TYPES` | String | `all` | Which uploads use the LLM: `all` (images and PDFs) or `images` (PDFs use the standard pipeline) | No |
+| `LLM_OCR_MAX_CONCURRENT_REQUESTS` | Integer | `2` | LLM requests in flight at once across all OCR jobs | No |
+| `LLM_OCR_PROMPT` | String | built-in | Override the transcription prompt | No |
 
 ### Database Configuration
 
