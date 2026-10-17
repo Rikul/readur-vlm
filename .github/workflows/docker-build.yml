@@ -14,7 +14,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 # A newer push to the same PR or branch supersedes this run.
 concurrency:
@@ -33,6 +32,10 @@ jobs:
       packages: write
 
     steps:
+      # Registry names must be lowercase; github.repository keeps the owner's casing.
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -107,6 +110,10 @@ jobs:
       packages: write
 
     steps:
+      # Registry names must be lowercase; github.repository keeps the owner's casing.
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
       - name: Download digests
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:

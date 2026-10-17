@@ -69,14 +69,6 @@ pub fn ocrmypdf_ocr_command_args(
     args
 }
 
-/// Path of the PNG `pdftoppm -png <pdf> <prefix>` writes for `page_num`.
-/// pdftoppm zero-pads page numbers to the width of the page count, so a
-/// 12-page PDF produces `<prefix>-01.png` through `<prefix>-12.png`.
-pub fn pdftoppm_page_path(prefix: &str, page_num: usize, page_count: usize) -> String {
-    let width = page_count.to_string().len();
-    format!("{}-{:0width$}.png", prefix, page_num, width = width)
-}
-
 /// RAII guard for automatic cleanup of temporary files
 pub(super) struct FileCleanupGuard {
     file_path: String,
@@ -126,9 +118,7 @@ pub struct EnhancedOcrService {
     pub max_pdf_size: u64,
     pub max_office_document_size: u64,
     pub ocr_timeout_seconds: u64,
-    /// When set, PDFs and images are OCR'd by this LLM first and the
-    /// Tesseract/ocrmypdf pipeline only runs if the LLM fails or times out.
-    /// See `super::llm_extraction`.
+    /// When set, PDFs and images go to this LLM before Tesseract; see `super::llm_extraction`.
     pub llm_ocr: Option<LlmOcrClient>,
 }
 
@@ -1417,7 +1407,7 @@ impl EnhancedOcrService {
         // Collect generated image paths
         let mut image_paths = Vec::new();
         for page_num in 1..=page_count {
-            let image_path = pdftoppm_page_path(&temp_prefix, page_num, page_count);
+            let image_path = Self::pdftoppm_page_path(&temp_prefix, page_num, page_count);
             if tokio::fs::metadata(&image_path).await.is_ok() {
                 image_paths.push(image_path);
             }
@@ -1445,8 +1435,7 @@ impl EnhancedOcrService {
         }
 
         // Convert pages to images
-        // 300 DPI for good Tesseract quality
-        let image_paths = self.extract_pdf_pages_as_images(file_path, page_count, 300).await?;
+        let image_paths = self.extract_pdf_pages_as_images(file_path, page_count, 300).await?; // 300 DPI for Tesseract
 
         // OCR each page
         let mut all_text = String::new();

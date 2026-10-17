@@ -173,3 +173,15 @@ impl Config {
             .unwrap_or(DEFAULT_FILE_STABILITY_CHECK_MS)
     }
 }
+
+/// S3 storage is enabled by S3_ENABLED=true or the documented STORAGE_BACKEND=s3.
+pub(super) fn s3_storage_enabled(s3_enabled: Option<&str>, storage_backend: Option<&str>) -> bool {
+    s3_enabled.map(|v| v.trim().eq_ignore_ascii_case("true")).unwrap_or(false)
+        || storage_backend.map(|v| v.trim().eq_ignore_ascii_case("s3")).unwrap_or(false)
+}
+
+/// S3_FORCE_PATH_STYLE with documented legacy alias S3_PATH_STYLE.
+/// None (unset) means path-style for custom endpoints, virtual-hosted otherwise.
+pub(super) fn parse_force_path_style(primary: Option<&str>, legacy: Option<&str>) -> Option<bool> {
+    primary.or(legacy).map(|v| v.trim().eq_ignore_ascii_case("true"))
+}

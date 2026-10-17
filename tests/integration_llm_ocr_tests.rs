@@ -213,7 +213,7 @@ async fn llm_is_not_called_when_disabled() {
 
 #[test]
 fn pdftoppm_page_paths_match_its_zero_padding() {
-    use readur::ocr::enhanced::pdftoppm_page_path;
+    let pdftoppm_page_path = readur::ocr::enhanced::EnhancedOcrService::pdftoppm_page_path;
     assert_eq!(pdftoppm_page_path("/t/p", 3, 3), "/t/p-3.png");
     assert_eq!(pdftoppm_page_path("/t/p", 3, 12), "/t/p-03.png");
     assert_eq!(pdftoppm_page_path("/t/p", 12, 12), "/t/p-12.png");

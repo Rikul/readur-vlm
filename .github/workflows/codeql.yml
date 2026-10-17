@@ -27,6 +27,10 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
+    # Code scanning on private repos needs GitHub Advanced Security; without
+    # it every upload fails, so only analyze public repos. Scheduled runs carry
+    # no repository payload, so those run upstream only.
+    if: ${{ github.repository == 'readur/readur' || (github.event_name != 'schedule' && !github.event.repository.private) }}
     # Runner size impacts CodeQL analysis time. To learn more, please see:
     #   - https://gh.io/recommended-hardware-resources-for-running-codeql
     #   - https://gh.io/supported-runners-and-hardware-resources

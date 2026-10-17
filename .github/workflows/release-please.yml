@@ -19,11 +19,19 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    env:
+      # Forks without the bot app's secrets skip the release instead of failing.
+      HAS_BOT_APP: ${{ secrets.BOT_CLIENT_ID != '' && secrets.BOT_APP_PRIVATE_KEY != '' }}
     steps:
+      - name: Skip without bot app secrets
+        if: env.HAS_BOT_APP != 'true'
+        run: echo "::notice::BOT_CLIENT_ID / BOT_APP_PRIVATE_KEY are not set; skipping release-please."
+
       # An app token rather than GITHUB_TOKEN: tags pushed with GITHUB_TOKEN
       # don't trigger other workflows, so docker-build.yml would never see
       # the v* tag and no image would be published.
       - name: Generate Token
+        if: env.HAS_BOT_APP == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
@@ -34,6 +42,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Release Please
+        if: env.HAS_BOT_APP == 'true'
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app-token.outputs.token }}
