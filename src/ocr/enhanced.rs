@@ -18,7 +18,7 @@ use std::sync::Arc;
 use crate::models::Settings;
 use crate::services::file_service::FileService;
 use super::xml_extractor::XmlOfficeExtractor;
-use super::llm::LlmOcrClient;
+pub use super::pdftoppm::pdftoppm_page_path;
 
 /// Callback for reporting OCR progress (current_page, total_pages).
 /// Called synchronously; implementations should use tokio::spawn for async work.
@@ -119,7 +119,7 @@ pub struct EnhancedOcrService {
     pub max_office_document_size: u64,
     pub ocr_timeout_seconds: u64,
     /// When set, PDFs and images go to this LLM before Tesseract; see `super::llm_extraction`.
-    pub llm_ocr: Option<LlmOcrClient>,
+    pub llm_ocr: Option<super::llm::LlmOcrClient>,
 }
 
 impl EnhancedOcrService {
@@ -1407,7 +1407,7 @@ impl EnhancedOcrService {
         // Collect generated image paths
         let mut image_paths = Vec::new();
         for page_num in 1..=page_count {
-            let image_path = Self::pdftoppm_page_path(&temp_prefix, page_num, page_count);
+            let image_path = pdftoppm_page_path(&temp_prefix, page_num, page_count);
             if tokio::fs::metadata(&image_path).await.is_ok() {
                 image_paths.push(image_path);
             }

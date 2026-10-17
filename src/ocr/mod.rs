@@ -3,6 +3,7 @@ pub mod enhanced;
 pub mod image_ocr;
 pub mod llm;
 mod llm_extraction;
+mod pdftoppm;
 pub mod error;
 pub mod health;
 pub mod queue;
