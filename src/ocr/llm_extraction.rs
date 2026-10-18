@@ -5,13 +5,31 @@
 //! Tesseract. The HTTP client, concurrency limit and circuit breaker live in
 //! `super::llm`.
 
+use tracing::{error, info};
+
 use super::enhanced::EnhancedOcrService;
-use super::llm::LlmOcrClient;
+use super::llm::{LlmOcrClient, LlmOcrConfig};
 
 impl EnhancedOcrService {
     pub fn with_llm_ocr(mut self, client: LlmOcrClient) -> Self {
         self.llm_ocr = Some(client);
         self
+    }
+
+    /// Enable LLM OCR from `config` when it is set. If the client cannot be
+    /// built, log it and keep the service on Tesseract only.
+    pub fn with_llm_ocr_config(self, config: Option<&LlmOcrConfig>, worker_id: &str) -> Self {
+        let Some(config) = config else { return self };
+        match LlmOcrClient::new(config.clone()) {
+            Ok(client) => {
+                info!("LLM OCR enabled for worker {} (model '{}')", worker_id, client.model());
+                self.with_llm_ocr(client)
+            }
+            Err(e) => {
+                error!("LLM OCR disabled, using Tesseract only: {}", e);
+                self
+            }
+        }
     }
 }
 
@@ -30,18 +48,45 @@ mod extraction {
     /// used for Tesseract to keep requests small; vision models downscale anyway.
     const LLM_OCR_PDF_DPI: u32 = 200;
 
+    /// Whether the LLM should get `file_path`: its type is enabled in
+    /// `LLM_OCR_FILE_TYPES` and the endpoint is not marked unresponsive.
+    fn llm_should_handle(llm: &LlmOcrClient, file_path: &str, mime_type: &str) -> bool {
+        if !llm.handles(mime_type) {
+            debug!("LLM OCR not enabled for {} (LLM_OCR_FILE_TYPES), using the standard pipeline for: {}", mime_type, file_path);
+            return false;
+        }
+        if !llm.is_available() {
+            info!("LLM OCR endpoint is unresponsive, using Tesseract for: {}", file_path);
+            return false;
+        }
+        true
+    }
+
+    /// Log an LLM attempt and keep its result only if it produced text.
+    fn llm_attempt_outcome(file_path: &str, attempt: Result<OcrResult>) -> Option<OcrResult> {
+        match attempt {
+            Ok(result) if result.word_count > 0 => {
+                info!("LLM OCR successful for '{}': {} words in {}ms", file_path, result.word_count, result.processing_time_ms);
+                Some(result)
+            }
+            Ok(_) => {
+                warn!("LLM OCR returned no text for '{}', falling back to Tesseract", file_path);
+                None
+            }
+            Err(e) => {
+                warn!("LLM OCR failed for '{}': {}, falling back to Tesseract", file_path, e);
+                None
+            }
+        }
+    }
+
     impl EnhancedOcrService {
         /// OCR a PDF or image with the configured LLM. `None` means LLM OCR is
         /// disabled, failed, timed out or produced no text, and the caller should
         /// run the Tesseract pipeline instead.
         pub(in crate::ocr) async fn try_llm_ocr(&self, file_path: &str, mime_type: &str, progress_callback: Option<ProgressCallback>) -> Option<OcrResult> {
             let llm = self.llm_ocr.as_ref()?;
-            if !llm.handles(mime_type) {
-                debug!("LLM OCR not enabled for {} (LLM_OCR_FILE_TYPES), using the standard pipeline for: {}", mime_type, file_path);
-                return None;
-            }
-            if !llm.is_available() {
-                info!("LLM OCR endpoint is unresponsive, using Tesseract for: {}", file_path);
+            if !llm_should_handle(llm, file_path, mime_type) {
                 return None;
             }
             let start_time = std::time::Instant::now();
@@ -53,20 +98,7 @@ mod extraction {
                 self.extract_text_from_image_with_llm(llm, file_path, mime_type, start_time).await
             };
 
-            match attempt {
-                Ok(result) if result.word_count > 0 => {
-                    info!("LLM OCR successful for '{}': {} words in {}ms", file_path, result.word_count, result.processing_time_ms);
-                    Some(result)
-                }
-                Ok(_) => {
-                    warn!("LLM OCR returned no text for '{}', falling back to Tesseract", file_path);
-                    None
-                }
-                Err(e) => {
-                    warn!("LLM OCR failed for '{}': {}, falling back to Tesseract", file_path, e);
-                    None
-                }
-            }
+            llm_attempt_outcome(file_path, attempt)
         }
 
         async fn extract_text_from_image_with_llm(&self, llm: &LlmOcrClient, file_path: &str, mime_type: &str, start_time: std::time::Instant) -> Result<OcrResult> {

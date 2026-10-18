@@ -33,7 +33,8 @@ mod s3_env_tests {
 }
 
 mod llm_ocr_env_tests {
-    use crate::config::*;
+    use crate::config::llm_ocr::parse_llm_ocr_config;
+    use anyhow::Result;
     use std::collections::HashMap;
 
     fn parse(vars: &[(&str, &str)]) -> Result<Option<crate::ocr::llm::LlmOcrConfig>> {

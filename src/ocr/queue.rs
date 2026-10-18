@@ -9,6 +9,7 @@ use tokio::time::{sleep, Duration};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::ocr::error::classify_ocr_error;
 use crate::{db::Database, ocr::enhanced::EnhancedOcrService, db_guardrails_simple::DocumentTransactionManager, monitoring::request_throttler::RequestThrottler};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -508,7 +509,7 @@ impl OcrQueueService {
                                     warn!("{} for document {}", error_msg, item.document_id);
                                     
                                     // Use classification function to determine proper failure reason
-                                    let (failure_reason, _should_suppress) = Self::classify_ocr_error(error_msg);
+                                    let (failure_reason, _should_suppress) = classify_ocr_error(error_msg);
 
                                     // Create failed document record using helper function
                                     let _ = self.create_failed_document_from_ocr_error(
@@ -529,7 +530,7 @@ impl OcrQueueService {
                                     error!("{}", error_msg);
                                     
                                     // Use classification function to determine proper failure reason
-                                    let (failure_reason, _should_suppress) = Self::classify_ocr_error(&error_msg);
+                                    let (failure_reason, _should_suppress) = classify_ocr_error(&error_msg);
 
                                     // Create failed document record using helper function
                                     let _ = self.create_failed_document_from_ocr_error(
@@ -553,7 +554,7 @@ impl OcrQueueService {
                                   filename, item.id, item.document_id);
                             
                             // Use classification function to determine proper failure reason
-                            let (failure_reason, _should_suppress) = Self::classify_ocr_error(&error_msg);
+                            let (failure_reason, _should_suppress) = classify_ocr_error(&error_msg);
 
                             // Create failed document record using helper function
                             let _ = self.create_failed_document_from_ocr_error(
@@ -625,7 +626,7 @@ impl OcrQueueService {
                         let error_str = e.to_string();
                         
                         // Classify error type and determine failure reason
-                        let (failure_reason, should_suppress) = Self::classify_ocr_error(&error_str);
+                        let (failure_reason, should_suppress) = classify_ocr_error(&error_str);
                         
                         // Use intelligent logging based on error type
                         if should_suppress {
@@ -700,23 +701,13 @@ impl OcrQueueService {
     /// Start the worker loop
     pub async fn start_worker(self: Arc<Self>) -> Result<()> {
         let semaphore = Arc::new(Semaphore::new(self.max_concurrent_jobs));
-        let mut ocr_service = EnhancedOcrService::new(
+        let ocr_service = Arc::new(EnhancedOcrService::new(
             "/tmp".to_string(),
             (*self.file_service).clone(),
             self.max_pdf_size_mb,
             self.max_office_document_size_mb,
             self.ocr_timeout_seconds,
-        );
-        if let Some(llm_config) = &self.llm_ocr {
-            match crate::ocr::llm::LlmOcrClient::new(llm_config.clone()) {
-                Ok(client) => {
-                    info!("LLM OCR enabled for worker {} (model '{}')", self.worker_id, client.model());
-                    ocr_service = ocr_service.with_llm_ocr(client);
-                }
-                Err(e) => error!("LLM OCR disabled, using Tesseract only: {}", e),
-            }
-        }
-        let ocr_service = Arc::new(ocr_service);
+        ).with_llm_ocr_config(self.llm_ocr.as_ref(), &self.worker_id));
         
         info!(
             "Starting OCR worker {} with {} concurrent jobs",
@@ -1294,30 +1285,5 @@ impl OcrQueueService {
         }
         
         Ok(())
-    }
-
-    /// Helper function to map OCR error strings to standardized failure reasons
-    fn classify_ocr_error(error_str: &str) -> (&'static str, bool) {
-        if error_str.contains("font encoding") || error_str.contains("missing unicode map") {
-            ("pdf_parsing_error", true)  // Font encoding issues are PDF parsing problems
-        } else if error_str.contains("corrupted internal structure") || error_str.contains("corrupted") {
-            ("file_corrupted", true)     // Corrupted files should use file_corrupted
-        } else if error_str.contains("timeout") || error_str.contains("timed out") {
-            ("ocr_timeout", false)
-        } else if error_str.contains("memory") || error_str.contains("out of memory") {
-            ("ocr_memory_limit", false)
-        } else if error_str.contains("panic") {
-            ("pdf_parsing_error", true)
-        } else if error_str.contains("unsupported") {
-            ("unsupported_format", false)
-        } else if error_str.contains("too large") || error_str.contains("file size") {
-            ("file_too_large", false)
-        } else if error_str.contains("No extractable text") || error_str.contains("0 words") {
-            ("low_ocr_confidence", false)  // No extractable text treated as low confidence OCR
-        } else if error_str.contains("validation") || error_str.contains("document may have been modified") {
-            ("other", false)  // Document validation failures use "other"
-        } else {
-            ("other", false)  // Fallback for any unrecognized errors
-        }
     }
 }

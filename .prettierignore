@@ -16,6 +16,8 @@ charts/*/templates/
 docs/
 
 # Generated / recorded artifacts.
+# ts-rs owns these; scripts/check-ts-bindings.sh fails on any reformat.
+frontend/src/types/generated/
 grafana-dashboard.json
 stress-test-metrics.json
 frontend/public/locales/
